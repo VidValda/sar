@@ -3,8 +3,8 @@ set -euo pipefail
 
 DISTRO="${ROS_DISTRO:?ROS_DISTRO is not set}"
 
-apt-get update
-apt-get install -y \
+sudo apt-get update
+sudo apt-get install -y \
   python3-pyudev \
   ros-"${DISTRO}"-controller-interface \
   ros-"${DISTRO}"-depthai-descriptions \

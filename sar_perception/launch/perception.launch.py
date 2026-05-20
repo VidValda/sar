@@ -57,11 +57,11 @@ def generate_launch_description():
     )
 
     declare_rs_rgb_width_arg = DeclareLaunchArgument(
-        "rs_rgb_width", default_value="1280", description="RealSense RGB stream width"
+        "rs_rgb_width", default_value="424", description="RealSense RGB stream width"
     )
 
     declare_rs_rgb_height_arg = DeclareLaunchArgument(
-        "rs_rgb_height", default_value="720", description="RealSense RGB stream height"
+        "rs_rgb_height", default_value="240", description="RealSense RGB stream height"
     )
 
     declare_rs_rgb_fps_arg = DeclareLaunchArgument(
@@ -79,6 +79,7 @@ def generate_launch_description():
             "enable_infra2": False,
             "enable_gyro": False,
             "enable_accel": False,
+            "initial_reset": True,
             "rgb_camera.color_profile": [
                 rs_rgb_width, TextSubstitution(text="x"),
                 rs_rgb_height, TextSubstitution(text="x"),

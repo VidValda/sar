@@ -40,7 +40,7 @@ hardware_interface::CallbackReturn SarSystemHardware::on_init(
       return hardware_interface::CallbackReturn::ERROR;
     }
 
-    if (joint.state_interfaces.size() != 1) {
+    if (joint.state_interfaces.size() != 2) {
       RCLCPP_ERROR(
         rclcpp::get_logger("SarSystemHardware"),
         "Joint '%s' must have exactly one state interface", joint.name.c_str());
@@ -121,6 +121,18 @@ std::vector<hardware_interface::StateInterface> SarSystemHardware::export_state_
   state_interfaces.emplace_back(
     info_.joints[3].name, hardware_interface::HW_IF_VELOCITY, &rear_right_.velocity);
 
+  state_interfaces.emplace_back(
+    info_.joints[0].name, hardware_interface::HW_IF_POSITION, &front_left_.position);
+
+  state_interfaces.emplace_back(
+    info_.joints[1].name, hardware_interface::HW_IF_POSITION, &front_right_.position);
+
+  state_interfaces.emplace_back(
+    info_.joints[2].name, hardware_interface::HW_IF_POSITION, &rear_left_.position);
+
+  state_interfaces.emplace_back(
+    info_.joints[3].name, hardware_interface::HW_IF_POSITION, &rear_right_.position);
+
   return state_interfaces;
 }
 
@@ -141,7 +153,7 @@ std::vector<hardware_interface::CommandInterface> SarSystemHardware::export_comm
 }
 
 hardware_interface::return_type SarSystemHardware::read(
-  const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
+  const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
   if (!comms_.connected()) {
     return hardware_interface::return_type::ERROR;
@@ -154,6 +166,12 @@ hardware_interface::return_type SarSystemHardware::read(
   front_right_.velocity = encoder_values.front_right;
   rear_left_.velocity = encoder_values.rear_left;
   rear_right_.velocity = encoder_values.rear_right;
+
+  const double dt = period.seconds();
+  front_left_.position  += front_left_.velocity  * dt;
+  front_right_.position += front_right_.velocity * dt;
+  rear_left_.position   += rear_left_.velocity   * dt;
+  rear_right_.position  += rear_right_.velocity  * dt;
 
   return hardware_interface::return_type::OK;
 }
