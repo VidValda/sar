@@ -12,7 +12,7 @@ explore_node:
     potential_scale: 5.0
     orientation_scale: 0.5
     gain_scale: 1.0
-    transform_tolerance: 0.1
+    transform_tolerance: 0.5
     # Lower than the default 0.5 so small frontiers (narrow doorways, niches)
     # are still considered — otherwise the robot can declare "done" while a
     # 30 cm gap to an unexplored room remains.
@@ -62,11 +62,11 @@ bt_navigator:
 
 controller_server:
   ros__parameters:
-    controller_frequency: 10.0
+    controller_frequency: 5.0
     min_x_velocity_threshold: 0.03
     min_y_velocity_threshold: 0.03
     min_theta_velocity_threshold: 0.3
-    failure_tolerance: 2.0
+    failure_tolerance: 5.0
     progress_checker_plugin: "progress_checker"
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
@@ -86,9 +86,9 @@ controller_server:
       # in-place rotation instead of a backward drive.
       min_vel_x: 0.0
       min_vel_y: 0.0
-      max_vel_x: 1.0
+      max_vel_x: 0.2
       max_vel_y: 0.0
-      max_vel_theta: 1.0
+      max_vel_theta: 0.5
       min_speed_xy: 0.0
       max_speed_xy: 1.0
       min_speed_theta: 0.0
@@ -104,7 +104,7 @@ controller_server:
       sim_time: 1.7
       linear_granularity: 0.05
       angular_granularity: 0.025
-      transform_tolerance: 0.2
+      transform_tolerance: 0.5
       xy_goal_tolerance: 0.1
       trans_stopped_velocity: 0.25
       short_circuit_trajectory_evaluation: True
@@ -133,8 +133,8 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      update_frequency: 5.0
-      publish_frequency: 2.0
+      update_frequency: 0.5
+      publish_frequency: 0.5
       global_frame: odom
       robot_base_frame: base_link
       rolling_window: True
@@ -154,7 +154,7 @@ local_costmap:
         enabled: True
         observation_sources: scan
         scan:
-          topic: /scan
+          topic: /scan_filtered
           max_obstacle_height: 2.0
           clearing: True
           marking: True
@@ -162,12 +162,12 @@ local_costmap:
           raytrace_max_range: 3.0
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
-          obstacle_min_range: 0.25
+          obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
         inflation_radius: 0.15
-        cost_scaling_factor: 3.0
+        cost_scaling_factor: 5.0
 
 global_costmap:
   global_costmap:
@@ -191,7 +191,7 @@ global_costmap:
         enabled: True
         observation_sources: scan
         scan:
-          topic: /scan
+          topic: /scan_filtered
           max_obstacle_height: 2.0
           clearing: True
           marking: True
@@ -199,12 +199,12 @@ global_costmap:
           raytrace_max_range: 3.0
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
-          obstacle_min_range: 0.15
+          obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
         inflation_radius: 0.15
-        cost_scaling_factor: 3.0
+        cost_scaling_factor: 5.0
 
 planner_server:
   ros__parameters:
