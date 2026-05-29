@@ -4,6 +4,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.duration import Duration
 from rclpy.time import Time
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CameraInfo, Image
 from geometry_msgs.msg import PoseStamped
 from visualization_msgs.msg import Marker
@@ -75,6 +76,15 @@ class ArucoDetector(Node):
         # The strictly cleaner fix is to set the camera mount orientation in
         # the URDF; this parameter is the in-detector workaround.
         self.declare_parameter('image_rotation', 0)
+        # Publishing the annotated /aruco/image is the dominant cost on Pi-class
+        # hardware: at 30 Hz BGR8 it's ~9 MB/s, which saturates WiFi the moment
+        # any remote node (RViz) subscribes. Off by default; turn on for debugging
+        # and pair with the image_transport republisher in perception.launch.py
+        # for a compressed companion topic.
+        self.declare_parameter('publish_debug_image', False)
+        # Throttle for the debug image when enabled. 5 Hz is plenty for visual
+        # confirmation and keeps the raw stream around ~1.5 MB/s.
+        self.declare_parameter('debug_image_rate', 5.0)
 
         self.marker_size = self.get_parameter('marker_size').value
         aruco_dict_name = self.get_parameter('aruco_dict').value
@@ -92,6 +102,10 @@ class ArucoDetector(Node):
                 f'image_rotation must be 0/90/180/270, got {self.image_rotation}; disabling'
             )
             self.image_rotation = 0
+        self.publish_debug_image = bool(self.get_parameter('publish_debug_image').value)
+        debug_rate = float(self.get_parameter('debug_image_rate').value)
+        self._debug_period_ns = int(1e9 / debug_rate) if debug_rate > 0.0 else 0
+        self._last_debug_ns = 0
         # marker_id -> (np.array(xyz), np.array(quat xyzw))
         self.smoothed_pose = {}
 
@@ -140,16 +154,29 @@ class ArucoDetector(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
+        # BEST_EFFORT on image/camera_info: matches the BEST_EFFORT publishers
+        # we configure for the realsense driver in perception.launch.py. If
+        # those overrides were missed (e.g. a different camera source), the
+        # detector would still receive frames as long as the publisher is at
+        # least BEST_EFFORT — but it would NOT match a RELIABLE-only publisher.
         self.image_sub = self.create_subscription(
-            Image, self.image_topic, self.image_callback, 10
+            Image, self.image_topic, self.image_callback, qos_profile_sensor_data
         )
         self.camera_info_sub = self.create_subscription(
-            CameraInfo, camera_info_topic, self.camera_info_callback, 10
+            CameraInfo, camera_info_topic, self.camera_info_callback, qos_profile_sensor_data
         )
 
         self.aruco_pub = self.create_publisher(ArucoMsg, '/aruco/detection', 10)
-        self.image_pub = self.create_publisher(Image, '/aruco/image', 10)
         self.marker_pub = self.create_publisher(Marker, '/aruco/marker', 10)
+        # BEST_EFFORT on the image stream: WiFi drops should silently shed frames
+        # rather than back-pressure the publisher (Reliable retries are what
+        # actually saturate the link, not the bytes themselves).
+        if self.publish_debug_image:
+            self.image_pub = self.create_publisher(
+                Image, '/aruco/image', qos_profile_sensor_data
+            )
+        else:
+            self.image_pub = None
 
         self.get_logger().info(
             f'ArUco detector initialized - Dictionary: {aruco_dict_name}, '
@@ -293,6 +320,15 @@ class ArucoDetector(Node):
         # lifetime=0 → persists; latest detection overwrites the same id+ns
         self.marker_pub.publish(m)
 
+    def _debug_image_due(self):
+        if self.image_pub is None or self._debug_period_ns <= 0:
+            return self.image_pub is not None
+        now_ns = self.get_clock().now().nanoseconds
+        if now_ns - self._last_debug_ns >= self._debug_period_ns:
+            self._last_debug_ns = now_ns
+            return True
+        return False
+
     def image_callback(self, msg):
         if self.camera_matrix is None:
             self.get_logger().warn(
@@ -314,22 +350,25 @@ class ArucoDetector(Node):
                 gray, self.aruco_dict, parameters=self.aruco_params
             )
 
+            publish_debug = self._debug_image_due()
+
             if ids is not None and len(ids) > 0:
-                cv2.aruco.drawDetectedMarkers(cv_image, corners, ids)
                 rvec, tvec, distance = self.estimate_pose(corners[0])
 
                 if distance is not None:
-                    label = f'ID:{ids[0][0]} {distance:.2f}m'
-                    org = (int(corners[0][0][0][0]), int(corners[0][0][0][1]) - 10)
-                    cv2.putText(cv_image, label, org,
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-
                     detection_msg = ArucoMsg()
                     detection_msg.detected = True
                     detection_msg.distance = float(distance)
                     self.aruco_pub.publish(detection_msg)
 
                     self.publish_map_marker(ids[0][0], rvec, tvec, msg.header)
+
+                    if publish_debug:
+                        cv2.aruco.drawDetectedMarkers(cv_image, corners, ids)
+                        label = f'ID:{ids[0][0]} {distance:.2f}m'
+                        org = (int(corners[0][0][0][0]), int(corners[0][0][0][1]) - 10)
+                        cv2.putText(cv_image, label, org,
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 else:
                     self.get_logger().warn('Failed to estimate distance')
             else:
@@ -338,7 +377,8 @@ class ArucoDetector(Node):
                 detection_msg.distance = 0.0
                 self.aruco_pub.publish(detection_msg)
 
-            self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, encoding='bgr8'))
+            if publish_debug:
+                self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, encoding='bgr8'))
 
         except Exception as e:
             self.get_logger().error(f'Error processing image: {str(e)}')

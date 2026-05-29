@@ -19,6 +19,8 @@ def generate_launch_description():
     rs_rgb_width = LaunchConfiguration("rs_rgb_width")
     rs_rgb_height = LaunchConfiguration("rs_rgb_height")
     rs_rgb_fps = LaunchConfiguration("rs_rgb_fps")
+    publish_debug_image = LaunchConfiguration("publish_debug_image")
+    debug_image_rate = LaunchConfiguration("debug_image_rate")
 
     declare_use_realsense_arg = DeclareLaunchArgument(
         "use_realsense", default_value="false", description="Launch RealSense D435i camera driver"
@@ -79,7 +81,19 @@ def generate_launch_description():
     )
 
     declare_rs_rgb_fps_arg = DeclareLaunchArgument(
-        "rs_rgb_fps", default_value="30", description="RealSense RGB stream FPS"
+        "rs_rgb_fps", default_value="15", description="RealSense RGB stream FPS"
+    )
+
+    declare_publish_debug_image_arg = DeclareLaunchArgument(
+        "publish_debug_image",
+        default_value="false",
+        description="Publish the annotated /aruco/image (BEST_EFFORT, throttled to debug_image_rate). Off by default because the raw stream saturates WiFi the moment a remote node (RViz) subscribes. When true, an image_transport republisher is also started to publish /aruco/image/compressed.",
+    )
+
+    declare_debug_image_rate_arg = DeclareLaunchArgument(
+        "debug_image_rate",
+        default_value="5.0",
+        description="Max publish rate (Hz) for /aruco/image when publish_debug_image is true.",
     )
 
     realsense_node = Node(
@@ -99,6 +113,16 @@ def generate_launch_description():
                 rs_rgb_height, TextSubstitution(text="x"),
                 rs_rgb_fps,
             ],
+            # The realsense driver's default QoS for image streams is
+            # RELIABLE + TRANSIENT_LOCAL — wrong for sensor data and lethal over
+            # WiFi: every dropped packet triggers a reliable retry, and every
+            # new subscriber gets buffered frames re-shipped. Override to the
+            # standard sensor_data profile (BEST_EFFORT + VOLATILE) so drops
+            # are silent and late joiners only get fresh frames.
+            "qos_overrides./camera/realsense2_camera/color/image_raw.publisher.reliability": "best_effort",
+            "qos_overrides./camera/realsense2_camera/color/image_raw.publisher.durability": "volatile",
+            "qos_overrides./camera/realsense2_camera/color/camera_info.publisher.reliability": "best_effort",
+            "qos_overrides./camera/realsense2_camera/color/camera_info.publisher.durability": "volatile",
         }],
         output="screen",
         condition=IfCondition(use_realsense),
@@ -129,7 +153,26 @@ def generate_launch_description():
             {"marker_mesh_resource": marker_mesh_resource},
             {"marker_pose_offset_z": marker_pose_offset_z},
             {"image_rotation": image_rotation},
+            {"publish_debug_image": publish_debug_image},
+            {"debug_image_rate": debug_image_rate},
         ],
+        output="screen",
+    )
+
+    # Publishes /aruco/image/compressed (JPEG) from the raw /aruco/image stream.
+    # Only started when publish_debug_image is true — gives tools that handle
+    # image_transport (rqt_image_view, foxglove) a ~30x smaller stream to pull
+    # over WiFi. RViz's stock Image display reads /aruco/image directly.
+    aruco_image_republisher = Node(
+        package="image_transport",
+        executable="republish",
+        name="aruco_image_republisher",
+        arguments=["raw", "compressed"],
+        remappings=[
+            ("in", "/aruco/image"),
+            ("out", "/aruco/image"),
+        ],
+        condition=IfCondition(publish_debug_image),
         output="screen",
     )
 
@@ -147,8 +190,11 @@ def generate_launch_description():
             declare_rs_rgb_width_arg,
             declare_rs_rgb_height_arg,
             declare_rs_rgb_fps_arg,
+            declare_publish_debug_image_arg,
+            declare_debug_image_rate_arg,
             realsense_node,
             map_to_camera_static_tf,
             aruco_detector,
+            aruco_image_republisher,
         ]
     )
