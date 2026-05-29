@@ -14,6 +14,8 @@ def generate_launch_description():
     camera_info_topic = LaunchConfiguration("camera_info_topic")
     marker_mesh_resource = LaunchConfiguration("marker_mesh_resource")
     marker_pose_offset_z = LaunchConfiguration("marker_pose_offset_z")
+    image_rotation = LaunchConfiguration("image_rotation")
+    publish_map_tf = LaunchConfiguration("publish_map_tf")
     rs_rgb_width = LaunchConfiguration("rs_rgb_width")
     rs_rgb_height = LaunchConfiguration("rs_rgb_height")
     rs_rgb_fps = LaunchConfiguration("rs_rgb_fps")
@@ -23,7 +25,7 @@ def generate_launch_description():
     )
 
     declare_marker_size_arg = DeclareLaunchArgument(
-        "marker_size", default_value="0.30", description="ArUco marker size in meters"
+        "marker_size", default_value="0.175", description="ArUco marker size in meters"
     )
 
     declare_aruco_dict_arg = DeclareLaunchArgument(
@@ -54,6 +56,18 @@ def generate_launch_description():
         "marker_pose_offset_z",
         default_value="0.0",
         description="Offset (m) along the marker's local Z axis applied to the published pose. Use -marker_size/2 to move from the face to the cube center.",
+    )
+
+    declare_image_rotation_arg = DeclareLaunchArgument(
+        "image_rotation",
+        default_value="0",
+        description="Rotate the input image by this many degrees before detection (0/90/180/270). Use 180 if the camera is mounted upside-down. Intrinsics and pose are compensated.",
+    )
+
+    declare_publish_map_tf_arg = DeclareLaunchArgument(
+        "publish_map_tf",
+        default_value="true",
+        description="Publish a static identity transform map -> camera_link so /aruco/marker can be rendered in the map frame when running standalone. Set to false when SLAM (or any other source) already provides the map frame.",
     )
 
     declare_rs_rgb_width_arg = DeclareLaunchArgument(
@@ -90,6 +104,19 @@ def generate_launch_description():
         condition=IfCondition(use_realsense),
     )
 
+    map_to_camera_static_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="map_to_camera_link_static_tf",
+        arguments=[
+            "--frame-id", "map",
+            "--child-frame-id", "camera_link",
+            "--x", "0", "--y", "0", "--z", "0",
+            "--roll", "0", "--pitch", "0", "--yaw", "0",
+        ],
+        condition=IfCondition(publish_map_tf),
+    )
+
     aruco_detector = Node(
         package=PACKAGE_NAME,
         executable="aruco_detector",
@@ -101,6 +128,7 @@ def generate_launch_description():
             {"camera_info_topic": camera_info_topic},
             {"marker_mesh_resource": marker_mesh_resource},
             {"marker_pose_offset_z": marker_pose_offset_z},
+            {"image_rotation": image_rotation},
         ],
         output="screen",
     )
@@ -114,10 +142,13 @@ def generate_launch_description():
             declare_camera_info_topic_arg,
             declare_marker_mesh_resource_arg,
             declare_marker_pose_offset_z_arg,
+            declare_image_rotation_arg,
+            declare_publish_map_tf_arg,
             declare_rs_rgb_width_arg,
             declare_rs_rgb_height_arg,
             declare_rs_rgb_fps_arg,
             realsense_node,
+            map_to_camera_static_tf,
             aruco_detector,
         ]
     )

@@ -64,6 +64,7 @@ def launch_setup(context):
             "marker_size": str(perception_cfg.get("marker_size", 0.75)),
             "aruco_dict": perception_cfg.get("aruco_dict", "DICT_6X6_1000"),
             "image_topic": perception_cfg.get("image_topic", "/camera/color/image_raw"),
+            "publish_map_tf": "false",
         }.items(),
     )
 

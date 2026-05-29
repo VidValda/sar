@@ -30,6 +30,7 @@ def ema_pose(prev_xyz, prev_quat, new_xyz, new_quat, alpha):
 
 def rvec_tvec_to_pose(rvec, tvec):
     rot, _ = cv2.Rodrigues(rvec)
+    tvec = np.asarray(tvec).reshape(3)
     qw = np.sqrt(max(0.0, 1.0 + rot[0, 0] + rot[1, 1] + rot[2, 2])) / 2.0
     qx = (rot[2, 1] - rot[1, 2]) / (4.0 * qw) if qw > 1e-8 else 0.0
     qy = (rot[0, 2] - rot[2, 0]) / (4.0 * qw) if qw > 1e-8 else 0.0
@@ -50,7 +51,7 @@ class ArucoDetector(Node):
         super().__init__('aruco_detector')
 
         # Parameters
-        self.declare_parameter('marker_size', 0.30)
+        self.declare_parameter('marker_size', 0.175)
         self.declare_parameter('aruco_dict', 'DICT_6X6_1000')
         self.declare_parameter('image_topic', '/oak/rgb/color')
         self.declare_parameter('camera_info_topic', '')
@@ -67,6 +68,13 @@ class ArucoDetector(Node):
         # (every detection is published as-is); 1 keeps only the first
         # detection. 0.1 typically converges in a few seconds.
         self.declare_parameter('smoothing_alpha', 0.1)
+        # Rotate the incoming image before detection. Allowed: 0, 90, 180, 270.
+        # Use 180 when the camera is physically mounted upside-down. The
+        # intrinsics (cx, cy) and detected pose are corrected so downstream
+        # consumers see the same frame as if the camera were right-side-up.
+        # The strictly cleaner fix is to set the camera mount orientation in
+        # the URDF; this parameter is the in-detector workaround.
+        self.declare_parameter('image_rotation', 0)
 
         self.marker_size = self.get_parameter('marker_size').value
         aruco_dict_name = self.get_parameter('aruco_dict').value
@@ -78,6 +86,12 @@ class ArucoDetector(Node):
         self.marker_mesh_resource = self.get_parameter('marker_mesh_resource').value
         self.marker_pose_offset_z = float(self.get_parameter('marker_pose_offset_z').value)
         self.smoothing_alpha = float(self.get_parameter('smoothing_alpha').value)
+        self.image_rotation = int(self.get_parameter('image_rotation').value) % 360
+        if self.image_rotation not in (0, 90, 180, 270):
+            self.get_logger().error(
+                f'image_rotation must be 0/90/180/270, got {self.image_rotation}; disabling'
+            )
+            self.image_rotation = 0
         # marker_id -> (np.array(xyz), np.array(quat xyzw))
         self.smoothed_pose = {}
 
@@ -146,13 +160,27 @@ class ArucoDetector(Node):
     def camera_info_callback(self, msg):
         if self.camera_matrix is not None:
             return
-        self.camera_matrix = np.array(msg.k, dtype=np.float32).reshape(3, 3)
+        K = np.array(msg.k, dtype=np.float32).reshape(3, 3)
         d = list(msg.d) if msg.d else [0.0] * 5
         self.dist_coeffs = np.array(d, dtype=np.float32).reshape(-1, 1)
+        # Rewrite intrinsics so they match the rotated image we'll feed PnP.
+        # W/H here are the original (unrotated) image dimensions.
+        W, H = int(msg.width), int(msg.height)
+        fx, fy, cx, cy = K[0, 0], K[1, 1], K[0, 2], K[1, 2]
+        if self.image_rotation == 180:
+            cx, cy = (W - 1) - cx, (H - 1) - cy
+        elif self.image_rotation == 90:   # clockwise: (u,v) -> (H-1-v, u)
+            fx, fy = fy, fx
+            cx, cy = (H - 1) - cy, cx
+        elif self.image_rotation == 270:  # counter-clockwise: (u,v) -> (v, W-1-u)
+            fx, fy = fy, fx
+            cx, cy = cy, (W - 1) - cx
+        self.camera_matrix = np.array(
+            [[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]], dtype=np.float32
+        )
         self.get_logger().info(
-            f'Camera intrinsics received: fx={self.camera_matrix[0,0]:.2f}, '
-            f'fy={self.camera_matrix[1,1]:.2f}, cx={self.camera_matrix[0,2]:.2f}, '
-            f'cy={self.camera_matrix[1,2]:.2f}'
+            f'Camera intrinsics received (rotation={self.image_rotation}): '
+            f'fx={fx:.2f}, fy={fy:.2f}, cx={cx:.2f}, cy={cy:.2f}'
         )
 
     def estimate_pose(self, corners):
@@ -171,6 +199,14 @@ class ArucoDetector(Node):
         )
         if not success:
             return None, None, None
+        # Note: when image_rotation != 0, the pose is in a "virtual" optical
+        # frame that emulates a right-side-up camera. This matches the
+        # standard right-side-up convention the realsense driver publishes
+        # for camera_color_optical_frame, so the pose can be stamped with
+        # that frame_id directly and TF will resolve it correctly — provided
+        # the URDF does NOT also encode the physical rotation. If the URDF
+        # is updated to reflect a physically rotated mount, set
+        # image_rotation back to 0 (or invert this assumption).
         return rvec, tvec, float(np.linalg.norm(tvec))
 
     def publish_map_marker(self, marker_id, rvec, tvec, header):
@@ -266,6 +302,12 @@ class ArucoDetector(Node):
             return
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            if self.image_rotation == 180:
+                cv_image = cv2.rotate(cv_image, cv2.ROTATE_180)
+            elif self.image_rotation == 90:
+                cv_image = cv2.rotate(cv_image, cv2.ROTATE_90_CLOCKWISE)
+            elif self.image_rotation == 270:
+                cv_image = cv2.rotate(cv_image, cv2.ROTATE_90_COUNTERCLOCKWISE)
             gray = np.ascontiguousarray(cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY))
 
             corners, ids, _ = cv2.aruco.detectMarkers(

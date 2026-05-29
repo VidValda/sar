@@ -33,6 +33,7 @@ ros-humble-ros2-controllers = ">=2.52.0,<3"
 ros-humble-generate-parameter-library = ">=0.6.0,<0.7"
 ros-humble-joint-state-publisher = ">=2.4.0,<3"
 ros-humble-laser-filters = ">=2.0.9,<3"
+ros-humble-nav2-bringup = ">=1.1.20,<2"
 
 [dependencies]
 colcon-common-extensions = ">=0.3.0,<0.4"
@@ -42,10 +43,11 @@ ninja = ">=1.13.2,<2"
 # system libatomic. conda-forge's libgcc ships libatomic.dylib on osx-arm64,
 # satisfying the linker.
 libgcc = "*"
+librealsense = "*"
 
 [environments]
 default = ["humble"]
 
 [activation]
-scripts = ["install/setup.sh"]
+scripts = ["scripts/pixi_activation.sh"]
 env = { LIBRARY_PATH = "$CONDA_PREFIX/lib" }
