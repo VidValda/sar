@@ -86,7 +86,7 @@ controller_server:
       # in-place rotation instead of a backward drive.
       min_vel_x: 0.0
       min_vel_y: 0.0
-      max_vel_x: 0.1
+      max_vel_x: 0.2
       max_vel_y: 0.0
       max_vel_theta: 0.5
       min_speed_xy: 0.0

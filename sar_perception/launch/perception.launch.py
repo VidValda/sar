@@ -25,7 +25,7 @@ def generate_launch_description():
     )
 
     declare_marker_size_arg = DeclareLaunchArgument(
-        "marker_size", default_value="0.175", description="ArUco marker size in meters"
+        "marker_size", default_value="0.128", description="ArUco marker size in meters"
     )
 
     declare_aruco_dict_arg = DeclareLaunchArgument(
@@ -109,7 +109,7 @@ def generate_launch_description():
         executable="static_transform_publisher",
         name="map_to_camera_link_static_tf",
         arguments=[
-            "--frame-id", "map",
+            "--frame-id", "base_link",
             "--child-frame-id", "camera_link",
             "--x", "0", "--y", "0", "--z", "0",
             "--roll", "0", "--pitch", "0", "--yaw", "0",

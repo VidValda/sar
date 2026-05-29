@@ -12,6 +12,6 @@ exploration:
 perception:
   enabled: true
   use_realsense: true
-  marker_size: 0.175
+  marker_size: 0.128
   aruco_dict: "DICT_6X6_1000"
   image_topic: "/camera/color/image_raw"
