@@ -4,11 +4,11 @@ explore_node:
     costmap_topic: /global_costmap/costmap
     costmap_updates_topic: /global_costmap/costmap_updates
     visualize: true
-    planner_frequency: 0.2
+    planner_frequency: 0.5
     # Generous progress window — once a frontier is blacklisted, explore_lite
     # never retries it for the rest of the run, so being trigger-happy here
     # makes exploration finish prematurely with frontiers left.
-    progress_timeout: 60.0
+    progress_timeout: 90.0
     potential_scale: 5.0
     orientation_scale: 0.5
     gain_scale: 1.0
@@ -16,7 +16,7 @@ explore_node:
     # Lower than the default 0.5 so small frontiers (narrow doorways, niches)
     # are still considered — otherwise the robot can declare "done" while a
     # 30 cm gap to an unexplored room remains.
-    min_frontier_size: 0.1
+    min_frontier_size: 0.5
     max_frontier_distance: 0.0
 
 bt_navigator:
@@ -75,8 +75,8 @@ controller_server:
     goal_checker_plugin: "goal_checker"
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.1
-      yaw_goal_tolerance: 0.2
+      xy_goal_tolerance: 0.3
+      yaw_goal_tolerance: 0.5
       stateful: True
     controller_plugins: ["FollowPath"]
     FollowPath:
@@ -86,7 +86,7 @@ controller_server:
       # in-place rotation instead of a backward drive.
       min_vel_x: 0.0
       min_vel_y: 0.0
-      max_vel_x: 0.2
+      max_vel_x: 0.3
       max_vel_y: 0.0
       max_vel_theta: 0.5
       min_speed_xy: 0.0
@@ -119,7 +119,7 @@ controller_server:
           "PathDist",
           "GoalDist",
         ]
-      BaseObstacle.scale: 0.10
+      BaseObstacle.scale: 0.2
       PathAlign.scale: 32.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 24.0
@@ -127,7 +127,7 @@ controller_server:
       PathDist.scale: 32.0
       GoalDist.scale: 24.0
       RotateToGoal.scale: 32.0
-      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.slowing_factor: 2.0
       RotateToGoal.lookahead_time: -1.0
 
 local_costmap:
@@ -166,8 +166,8 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
-        inflation_radius: 0.15
-        cost_scaling_factor: 5.0
+        inflation_radius: 0.25
+        cost_scaling_factor: 3.0
 
 global_costmap:
   global_costmap:
@@ -176,7 +176,7 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
-      resolution: 0.05
+      resolution: 0.04
       always_send_full_costmap: True
       track_unknown_space: True
       footprint: "[[0.17, 0.17], [0.17, -0.17], [-0.17, -0.17], [-0.17, 0.17]]"
@@ -203,8 +203,8 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
-        inflation_radius: 0.15
-        cost_scaling_factor: 5.0
+        inflation_radius: 0.25
+        cost_scaling_factor: 3.0
 
 planner_server:
   ros__parameters:
@@ -216,14 +216,14 @@ planner_server:
       # walls. SmacPlanner2D is the modern A* grid planner and handles those
       # sliver-cell cases without the spurious failures.
       plugin: "nav2_smac_planner/SmacPlanner2D"
-      tolerance: 0.5
+      tolerance: 1.0
       downsample_costmap: false
       downsampling_factor: 1
       allow_unknown: true
       max_iterations: 1000000
       max_on_approach_iterations: 1000
-      max_planning_time: 2.0
-      cost_travel_multiplier: 2.0
+      max_planning_time: 3.0
+      cost_travel_multiplier: 2.5
       use_final_approach_orientation: false
 
 smoother_server:
@@ -258,7 +258,7 @@ behavior_server:
     global_frame: map
     robot_base_frame: base_link
     transform_timeout: 0.1
-    simulate_ahead_time: 2.0
+    simulate_ahead_time: 3.0
     max_rotational_vel: 1.0
     min_rotational_vel: 0.4
     rotational_acc_lim: 3.2
